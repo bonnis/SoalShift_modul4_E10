@@ -30,6 +30,95 @@ int search(char c)
     return 0;
 }
 
+int remove_directory(const char *path)
+{
+   DIR *d = opendir(path);
+   size_t path_len = strlen(path);
+   int r = -1;
+
+   if (d)
+   {
+      struct dirent *p;
+
+      r = 0;
+
+      while (!r && (p=readdir(d)))
+      {
+          int r2 = -1;
+          char *buf;
+          size_t len;
+
+          /* Skip the names "." and ".." as we don't want to recurse on them. */
+          if (!strcmp(p->d_name, ".") || !strcmp(p->d_name, ".."))
+          {
+             continue;
+          }
+
+          len = path_len + strlen(p->d_name) + 2; 
+          buf = malloc(len);
+
+          if (buf)
+          {
+             struct stat statbuf;
+
+             snprintf(buf, len, "%s/%s", path, p->d_name);
+
+             if (!stat(buf, &statbuf))
+             {
+                if (S_ISDIR(statbuf.st_mode))
+                {
+                   r2 = remove_directory(buf);
+                }
+                else
+                {
+                   r2 = unlink(buf);
+                }
+             }
+
+             free(buf);
+          }
+
+          r = r2;
+      }
+
+      closedir(d);
+   }
+
+   if (!r)
+   {
+      r = rmdir(path);
+   }
+
+   return r;
+}
+
+// void join(char* vidname)
+// {
+// 	FILE* source;
+// 	FILE* target;
+// 	struct dirent* de;
+// 	char temp[1000] ={0};
+// 	char anothertemp[1000];
+// 	sprintf(temp,"/Videos/%s",dirpath,vidname);
+// 	encrypt(temp,key);
+// 	sprintf(anothertemp,"%s%s",dirpath,temp);
+// 	target = fopen(anothertemp,"ab");
+
+// 	char targetname[1000]={0};
+
+// 	unsigned char buff[8192];
+// 	int a = 0;
+// 	sprintf(target,"%s.mkv.%03d",temp,a);
+// 	source = fopen(target,"rb");
+// 	while(source!=NULL)
+// 	{
+// 		fread(buff,1,sizeof(buff),source);
+// 		fwrite(buff,1,n,target);
+// 		sprintf(target,"%s.mkv.%03d",temp,a);
+// 		source = fopen()
+// 	}
+// }
+
 void enkripsi(char* stringn, int shift)
 {
     int i=0;
@@ -71,11 +160,18 @@ static int xmp_create(const char *path, mode_t mode,
                       struct fuse_file_info *fi)
 {
         int res;
+		short flag=0;
         char fpath[1000];
 		char temp[100];
 		strcpy(temp,path);
+
+		if (strstr(temp, "/YOUTUBER/") != NULL) {
+			mode = 0640;
+			strcat(temp,".iz1");
+		}
+
 		enkripsi(temp,key);
-	    sprintf(fpath,"%s%s",dirpath,temp);
+		sprintf(fpath,"%s%s",dirpath,temp);
         res = open(fpath, fi->flags, mode);
         if (res == -1)
                 return -errno;
@@ -89,6 +185,11 @@ static int xmp_mkdir(const char *path, mode_t mode)
         char fpath[1000];
 		char temp[100];
 		strcpy(temp,path);
+
+		if (strstr(temp, "/YOUTUBER/") != NULL) {
+			mode = 0750;
+		}
+
 		enkripsi(temp,key);
 	    sprintf(fpath,"%s%s",dirpath,temp);
         res = mkdir(fpath, mode);
@@ -123,7 +224,13 @@ static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 		path=dirpath;
 		sprintf(fpath,"%s",path);
 	}
-	else sprintf(fpath, "%s%s",dirpath,path);
+	else 
+	{
+		char temporarystring[100];
+		strcpy(temporarystring,path);
+		enkripsi(temporarystring,key);
+		sprintf(fpath, "%s%s",dirpath,temporarystring);
+	}
 	int res = 0;
 
 	DIR *dp;
@@ -131,7 +238,7 @@ static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
 	(void) offset;
 	(void) fi;
-
+	
 	dp = opendir(fpath);
 	if (dp == NULL)
 		return -errno;
@@ -318,6 +425,11 @@ static int xmp_chmod(const char *path, mode_t mode,
 		char fpath[1000];
 		char temp[100];
 		strcpy(temp,path);
+		if (strstr(temp, "/YOUTUBER/") && !strcmp(".iz1",&temp[strlen(temp)-4]))
+		{
+			execlp("notify-send","notify-send","-i","face-laugh","'Error'", "'File ekstensi iz1 tidak boleh diubah permissionnya'",NULL);
+			return 0;
+		}
 		enkripsi(temp,key);
 		sprintf(fpath, "%s%s",dirpath,temp);
         res = chmod(fpath, mode);
@@ -341,6 +453,13 @@ static int xmp_chown(const char *path, uid_t uid, gid_t gid,
         return 0;
 }
 
+// static void* xmp_destroy(struct fuse_conn_info *conn)
+// {
+
+// 	remove_directory();
+// 	return NULL;
+// }
+
 static struct fuse_operations xmp_oper = {
 	.utimens	= xmp_utimens,
 	.getattr	= xmp_getattr,
@@ -354,6 +473,7 @@ static struct fuse_operations xmp_oper = {
 	.access     = xmp_access,
 	.open       = xmp_open,
     .write      = xmp_write,
+	// .destroy	= xmp_destroy,
 };
 
 int main(int argc, char *argv[])
